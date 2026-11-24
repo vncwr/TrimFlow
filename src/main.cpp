@@ -675,6 +675,25 @@ void TrimSelfMemory() {
 
 // ---- Floating Bottom-Right Status Toast Banner ------------------------------------------------
 
+static bool SystemUsesLightTheme() {
+    DWORD v = 0, sz = sizeof(v);
+    if (RegGetValueW(HKEY_CURRENT_USER,
+            L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+            L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &v, &sz) != ERROR_SUCCESS)
+        return false;  // can't read it -> keep the current dark look
+    return v != 0;
+}
+
+struct ToastTheme { COLORREF bg, border, dot, title, sub; };
+
+static ToastTheme GetToastTheme() {
+    if (SystemUsesLightTheme())
+        return { RGB(0xFF, 0xFF, 0xFF), RGB(0xD9, 0xDD, 0xE1), RGB(0x10, 0xB9, 0x81),
+                 RGB(0x17, 0x19, 0x1C), RGB(0x5B, 0x63, 0x6B) };
+    return { RGB(0x17, 0x19, 0x1C), RGB(0x25, 0x28, 0x2C), RGB(0x34, 0xD3, 0x99),
+             RGB(0xF0, 0xF3, 0xF6), RGB(0xA3, 0xA9, 0xB0) };
+}
+
 LRESULT CALLBACK ToastWndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_PAINT) {
         PAINTSTRUCT ps;
@@ -684,16 +703,17 @@ LRESULT CALLBACK ToastWndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         int dpi = (int)GetDpiForWindow(h);
         auto S = [&](int v) { return MulDiv(v, dpi, 96); };
 
-        // Dark card #17191C with 1px #25282C border
-        HBRUSH bg = CreateSolidBrush(RGB(0x17, 0x19, 0x1C));
-        HBRUSH brd = CreateSolidBrush(RGB(0x25, 0x28, 0x2C));
+        // Card + 1px border, colors from the system theme
+        const ToastTheme th = GetToastTheme();
+        HBRUSH bg = CreateSolidBrush(th.bg);
+        HBRUSH brd = CreateSolidBrush(th.border);
         FillRect(dc, &rc, bg);
         FrameRect(dc, &rc, brd);
         DeleteObject(bg);
         DeleteObject(brd);
 
         // Emerald indicator dot (#34D399)
-        HBRUSH dotBrush = CreateSolidBrush(RGB(0x34, 0xD3, 0x99));
+        HBRUSH dotBrush = CreateSolidBrush(th.dot);
         HPEN nullPen = (HPEN)GetStockObject(NULL_PEN);
         HGDIOBJ oldB = SelectObject(dc, dotBrush);
         HGDIOBJ oldP = SelectObject(dc, nullPen);
@@ -709,12 +729,12 @@ LRESULT CALLBACK ToastWndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                   OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
 
         HGDIOBJ of = SelectObject(dc, fBold);
-        SetTextColor(dc, RGB(0xF0, 0xF3, 0xF6));
+        SetTextColor(dc, th.title);
         RECT r1{ S(32), S(11), rc.right - S(12), S(30) };
         DrawTextW(dc, g_toastTitle.c_str(), -1, &r1, DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
 
         SelectObject(dc, fSub);
-        SetTextColor(dc, RGB(0xA3, 0xA9, 0xB0));
+        SetTextColor(dc, th.sub);
         RECT r2{ S(32), S(31), rc.right - S(12), rc.bottom - S(8) };
         DrawTextW(dc, g_toastSub.c_str(), -1, &r2, DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
 
